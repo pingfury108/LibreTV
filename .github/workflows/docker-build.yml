@@ -1,38 +1,32 @@
 name: Build LibreTV image
 
+permissions:
+  contents: read
+  packages: write
+
 on:
-  workflow_run:
-    workflows: ["Bump version"]
-    types:
-      - completed
+  push:
+    branches:
+      - main
   workflow_dispatch:
+
+env:
+  IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/libretv
 
 jobs:
   build:
     name: Build LibreTV image
     runs-on: ubuntu-latest
-    if: (github.event.workflow_run.conclusion == 'success' && github.repository == 'LibreSpark/LibreTV') || (github.repository == 'bestZwei/libretv')
 
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
-      
+
       - name: Read version from VERSION.txt
         id: version
         run: |
           VERSION=$(cat VERSION.txt)
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
-          
-      - name: Set Docker image tag based on repository
-        id: set-tag
-        run: |
-          if [ "${{ github.repository }}" = "LibreSpark/LibreTV" ]; then
-            echo "IMAGE_NAME=libretv" >> $GITHUB_OUTPUT
-            echo "TAGS=${{ secrets.DOCKER_USERNAME }}/libretv:latest,${{ secrets.DOCKER_USERNAME }}/libretv:${{ steps.version.outputs.VERSION }}" >> $GITHUB_OUTPUT
-          else
-            echo "IMAGE_NAME=libretv-beta" >> $GITHUB_OUTPUT
-            echo "TAGS=${{ secrets.DOCKER_USERNAME }}/libretv-beta:latest" >> $GITHUB_OUTPUT
-          fi
 
       - name: Set up Docker QEMU
         uses: docker/setup-qemu-action@v3
@@ -40,11 +34,12 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Login to DockerHub
+      - name: Login to GHCR
         uses: docker/login-action@v3
         with:
-          username: ${{ secrets.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_PASSWORD }}
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push LibreTV image
         uses: docker/build-push-action@v6.14.0
@@ -52,5 +47,7 @@ jobs:
           context: .
           file: Dockerfile
           push: true
-          tags: ${{ steps.set-tag.outputs.TAGS }}
-          platforms: linux/amd64,linux/arm64/v8,linux/arm/v7
+          tags: |
+            ${{ env.IMAGE_NAME }}:latest
+            ${{ env.IMAGE_NAME }}:${{ steps.version.outputs.VERSION }}
+          platforms: linux/amd64,linux/arm64
