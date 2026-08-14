@@ -1,5 +1,5 @@
 // 全局变量
-let selectedAPIs = JSON.parse(localStorage.getItem('selectedAPIs') || '["tyyszy","dyttzy", "bfzy", "ruyi"]'); // 默认选中资源
+let selectedAPIs = JSON.parse(localStorage.getItem('selectedAPIs') || '["dyttzy","bfzy", "ruyi", "jisu"]'); // 默认选中资源
 let customAPIs = JSON.parse(localStorage.getItem('customAPIs') || '[]'); // 存储自定义API列表
 
 // 添加当前播放的集数索引
@@ -28,7 +28,7 @@ document.addEventListener('DOMContentLoaded', function () {
     // 设置默认API选择（如果是第一次加载）
     if (!localStorage.getItem('hasInitializedDefaults')) {
         // 默认选中资源
-        selectedAPIs = ["tyyszy", "bfzy", "dyttzy", "ruyi"];
+        selectedAPIs = ["dyttzy", "bfzy", "ruyi", "jisu"];
         localStorage.setItem('selectedAPIs', JSON.stringify(selectedAPIs));
 
         // 默认选中过滤开关
@@ -603,6 +603,28 @@ function getCustomApiInfo(customApiIndex) {
     return customAPIs[index];
 }
 
+// 封面加载失败重试：重新生成带鉴权的代理 URL（解决签名过期），最终回退本地占位图
+async function retrySearchCover(imgEl, encodedUrl) {
+    const fallback = () => {
+        imgEl.onerror = null;
+        imgEl.src = 'image/nomedia.png';
+        imgEl.classList.add('object-contain');
+    };
+    // 只重试一次，避免死循环
+    if (imgEl.dataset.retried) {
+        fallback();
+        return;
+    }
+    imgEl.dataset.retried = '1';
+    try {
+        imgEl.src = window.ProxyAuth?.addAuthToProxyUrl
+            ? await window.ProxyAuth.addAuthToProxyUrl(PROXY_URL + encodedUrl)
+            : PROXY_URL + encodedUrl;
+    } catch (e) {
+        fallback();
+    }
+}
+
 // 搜索功能 - 修改为支持多选API和多页结果
 async function search() {
     // 强化的密码保护校验 - 防止绕过
@@ -729,7 +751,7 @@ async function search() {
         }
 
         // 添加XSS保护，使用textContent和属性转义
-        const safeResults = allResults.map(item => {
+        const safeResults = await Promise.all(allResults.map(async item => {
             const safeId = item.vod_id ? item.vod_id.toString().replace(/[^\w-]/g, '') : '';
             const safeName = (item.vod_name || '').toString()
                 .replace(/</g, '&lt;')
@@ -746,15 +768,25 @@ async function search() {
             // 修改为水平卡片布局，图片在左侧，文本在右侧，并优化样式
             const hasCover = item.vod_pic && item.vod_pic.startsWith('http');
 
+            // 封面统一走代理并携带鉴权参数，绕过图床防盗链和地区拦截
+            let coverUrl = '';
+            let encodedCoverUrl = '';
+            if (hasCover) {
+                encodedCoverUrl = encodeURIComponent(item.vod_pic);
+                coverUrl = window.ProxyAuth?.addAuthToProxyUrl
+                    ? await window.ProxyAuth.addAuthToProxyUrl(PROXY_URL + encodedCoverUrl)
+                    : PROXY_URL + encodedCoverUrl;
+            }
+
             return `
                 <div class="card-hover bg-[#111] rounded-lg overflow-hidden cursor-pointer transition-all hover:scale-[1.02] h-full shadow-sm hover:shadow-md" 
                      onclick="showDetails('${safeId}','${safeName}','${sourceCode}')" ${apiUrlAttr}>
                     <div class="flex h-full">
                         ${hasCover ? `
                         <div class="relative flex-shrink-0 search-card-img-container">
-                            <img src="${item.vod_pic}" alt="${safeName}" 
+                            <img src="${coverUrl}" alt="${safeName}" 
                                  class="h-full w-full object-cover transition-transform hover:scale-110" 
-                                 onerror="this.onerror=null; this.src='https://via.placeholder.com/300x450?text=无封面'; this.classList.add('object-contain');" 
+                                 onerror="retrySearchCover(this, '${encodedCoverUrl}')" 
                                  loading="lazy">
                             <div class="absolute inset-0 bg-gradient-to-r from-black/30 to-transparent"></div>
                         </div>` : ''}
@@ -795,9 +827,9 @@ async function search() {
                     </div>
                 </div>
             `;
-        }).join('');
+        }));
 
-        resultsDiv.innerHTML = safeResults;
+        resultsDiv.innerHTML = safeResults.join('');
     } catch (error) {
         console.error('搜索错误:', error);
         if (error.name === 'AbortError') {

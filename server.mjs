@@ -184,7 +184,9 @@ app.get('/proxy/:encodedUrl', async (req, res) => {
           responseType: 'stream',
           timeout: config.timeout,
           headers: {
-            'User-Agent': config.userAgent
+            'User-Agent': config.userAgent,
+            // 部分图床（如豆瓣）校验 Referer，使用目标站自身 origin 绕过防盗链
+            'Referer': new URL(targetUrl).origin + '/'
           }
         });
       } catch (error) {
@@ -205,6 +207,9 @@ app.get('/proxy/:encodedUrl', async (req, res) => {
       process.env.FILTERED_HEADERS || 
       'content-security-policy,cookie,set-cookie,x-frame-options,access-control-allow-origin'
     ).split(',');
+    // content-length/encoding 必须过滤（不可配置）：axios 已解压响应流，
+    // 保留原始压缩头会导致客户端按错误的 content-length 截断内容
+    sensitiveHeaders.push('content-length', 'content-encoding', 'transfer-encoding');
     
     sensitiveHeaders.forEach(header => delete headers[header]);
     res.set(headers);
