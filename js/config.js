@@ -1,5 +1,5 @@
 // 全局常量配置
-const PROXY_URL = '/proxy/';    // 适用于 Cloudflare, Netlify (带重写), Vercel (带重写)
+const PROXY_URL = '/proxy/';    // 统一由 Go 后端处理
 // const HOPLAYER_URL = 'https://hoplayer.com/index.html';
 const SEARCH_HISTORY_KEY = 'videoSearchHistory';
 const MAX_HISTORY_ITEMS = 5;
@@ -14,7 +14,7 @@ const PASSWORD_CONFIG = {
 // 网站信息配置
 const SITE_CONFIG = {
     name: 'LibreTV',
-    url: 'https://libretv.is-an.org',
+    url: 'https://github.com/pingfury108/LibreTV',
     description: '免费在线视频搜索与观看平台',
     logo: 'image/logo.png',
     version: '1.0.3'
